@@ -142,11 +142,11 @@ print('The results are {}. This took {} seconds. Run the next cell to see '
 
 time.sleep(10.0)
 start_time = time.time()
-results = [ray.get(slow_function.remote(i)) for i in range(4)]
+results1 = [ray.get(results[i]) for i in range(4)]
 end_time = time.time()
 duration = end_time - start_time
 
-assert results == [0, 1, 2, 3], 'Did you remember to call ray.get?'
+assert results1 == [0, 1, 2, 3], 'Did you remember to call ray.get?'
 assert duration < 1.1, ('The loop took {} seconds. This is too slow.'
                         .format(duration))
 assert duration > 1, ('The loop took {} seconds. This is too fast.'
