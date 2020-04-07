@@ -445,6 +445,7 @@ for _ in range(5):
     results.append(f1.increment.remote())
     results.append(f2.increment.remote())
 
+results = ray.get(results)
 end_time = time.time()
 duration = end_time - start_time
 
