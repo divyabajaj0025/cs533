@@ -510,7 +510,9 @@ start_time = time.time()
 
 # This launches 6 tasks, each of which takes a random amount of time to
 # complete.
-result_ids = [f.remote(i) for i in range(6)]
+ready, remaining = ray.wait ([f.remote(i) for i in range(6)])
+result_ids = np.concatenate(ready, remaining)
+
 # Get one batch of tasks. Instead of waiting for a fixed subset of tasks, we
 # should instead use the first 3 tasks that finish.
 initial_results = ray.get(result_ids[:3])
