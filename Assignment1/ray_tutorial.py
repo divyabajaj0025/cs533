@@ -400,7 +400,7 @@ print('Success! The example took {} seconds.'.format(duration))
 
 # In[12]:
 
-
+@ray.remote
 class Foo(object):
     def __init__(self):
         self.counter = 0
@@ -420,8 +420,8 @@ assert hasattr(Foo, 'remote'), 'You need to turn "Foo" into an actor with @ray.r
 
 
 # Create two Foo objects.
-f1 = Foo()
-f2 = Foo()
+f1 = Foo.remote()
+f2 = Foo.remote()
 
 
 # **EXERCISE:** Parallelize the code below. The two actors can execute methods in parallel (though each actor can only execute one method at a time).
@@ -433,8 +433,8 @@ start_time = time.time()
 
 # Reset the actor state so that we can run this cell multiple times without
 # changing the results.
-f1.reset()
-f2.reset()
+f1.reset.remote()
+f2.reset.remote()
 
 # We want to parallelize this code. However, it is not straightforward to
 # make "increment" a remote function, because state is shared (the value of
@@ -442,8 +442,8 @@ f2.reset()
 # makes sense to use actors.
 results = []
 for _ in range(5):
-    results.append(f1.increment())
-    results.append(f2.increment())
+    results.append(f1.increment.remote())
+    results.append(f2.increment.remote())
 
 end_time = time.time()
 duration = end_time - start_time
