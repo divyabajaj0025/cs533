@@ -142,7 +142,7 @@ print('The results are {}. This took {} seconds. Run the next cell to see '
 
 time.sleep(10.0)
 start_time = time.time()
-results1 = ray.get(results)
+results1 = ray.get([slow_function.remote(i) for i in range(4)])
 end_time = time.time()
 duration = end_time - start_time
 
