@@ -510,12 +510,11 @@ start_time = time.time()
 
 # This launches 6 tasks, each of which takes a random amount of time to
 # complete.
-ready, remaining = ray.wait ([f.remote(i) for i in range(6)])
-result_ids = ready + remaining
+ready, remaining = ray.wait ([f.remote(i) for i in range(6)], 3)
 
 # Get one batch of tasks. Instead of waiting for a fixed subset of tasks, we
 # should instead use the first 3 tasks that finish.
-initial_results = ray.get(result_ids[:3])
+initial_results = ray.get(ready)
 
 end_time = time.time()
 duration = end_time - start_time
@@ -527,7 +526,7 @@ duration = end_time - start_time
 
 
 # Wait for the remaining tasks to complete.
-remaining_results = ray.get(result_ids[3:])
+remaining_results = ray.get(remaining)
 
 
 # **VERIFY:** Run some checks to verify that the changes you made to the code were correct. Some of the checks should fail when you initially run the cells. After completing the exercises, the checks should pass.
