@@ -21,7 +21,7 @@ def map_parallel(function, xs):
     """Apply a remote function to each element of a list."""
     if not isinstance(xs, list):
         raise ValueError('The xs argument must be a list.')
-    
+
     if not hasattr(function, 'remote'):
         raise ValueError('The function argument must be a remote function.')
 
@@ -32,7 +32,7 @@ def map_parallel(function, xs):
     return [function.remote(x) for x in xs]
 
 
-# ***** Do not change the code below! It verifies that 
+# ***** Do not change the code below! It verifies that
 # ***** the exercise has been done correctly. *****
 
 def increment_regular(x):
@@ -49,7 +49,7 @@ result_ids = map_parallel(increment_remote, xs)
 assert isinstance(result_ids, list), 'The output of "map_parallel" must be a list.'
 assert all([isinstance(x, ray.ObjectID) for x in result_ids]), 'The output of map_parallel must be a list of ObjectIDs.'
 assert ray.get(result_ids) == map_serial(increment_regular, xs)
-print('Congratulations, the test passed!')    
+print('Congratulations, the test passed!')
 
 def sleep_regular(x):
     time.sleep(1)
@@ -84,7 +84,7 @@ assert results_parallel == results_serial
 def reduce_serial(function, xs):
     if len(xs) == 1:
         return xs[0]
-    
+
     result = xs[0]
     for i in range(1, len(xs)):
         result = function(result, xs[i])
@@ -130,7 +130,7 @@ print('Congratulations, the test passed!')
 def reduce_parallel_tree(function, xs):
     if not isinstance(xs, list):
         raise ValueError('The xs argument must be a list.')
-    
+
     if not hasattr(function, 'remote'):
         raise ValueError('The function argument must be a remote function.')
 
@@ -139,7 +139,7 @@ def reduce_parallel_tree(function, xs):
     # the result to the end of "xs". Then repeat until there is only one
     # element left in "xs" and return that element.
 
-    # EXERCISE: Think about why that exposes more parallelism.    
+    # EXERCISE: Think about why that exposes more parallelism.
     while len(xs) > 1:
         result_id = function.remote(xs[0], xs[1])
         xs = xs[2:]
@@ -176,8 +176,8 @@ result_tree_ids = reduce_parallel_tree(add_remote, [1, 2, 3, 4, 5, 6, 7, 8])
 # (since we started Ray with num_cpus=4).
 results_parallel_tree = ray.get(result_tree_ids)
 reduce_time = time.time() - start_time
-parallel_time += reduce_time 
+parallel_time += reduce_time
 print('reduce time:', reduce_time)
-print('total time:', paralle_time)
+print('total time:', parallel_time)
 
 assert results_parallel_tree == results_serial
