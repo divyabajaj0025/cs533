@@ -137,6 +137,7 @@ MAPS = {
         'FFFFFFFFFFFFFFFFFFFFFFFFHFFFFFFF',
         'FFFFFFFFFFFFFFFHFFFFFFFFHFFFFFFG',
     ]
+
 }
 
 
@@ -567,8 +568,8 @@ def sync_value_iteration_distributed_v2(env, beta = 0.999, epsilon = 0.01, worke
 map_8 = (MAPS["8x8"], 8)
 map_16 = (MAPS["16x16"], 16)
 map_32 = (MAPS["32x32"], 32)
-#map_50 = (generate_map((50,50)), 50)
-#map_110 = (generate_map((110,110)), 110)
+map_50 = (generate_map((50,50)), 50)
+#map_100 = (generate_map((100,100)), 100)
 
 MAP = map_32
 map_size = MAP[1]
@@ -593,6 +594,7 @@ class VI_server_v3(object):
         self.v_new = [0] * size
         self.errors = []
 
+    @ray.method(num_return_vals=2)
     def get_value_and_policy(self):
         return self.v_current, self.pi
 
@@ -609,11 +611,10 @@ class VI_server_v3(object):
         return max_error
 
 @ray.remote(num_return_vals=4)
-def VI_worker_v3(VI_server, data, update_range):
+def VI_worker_v3(VI_server, data, update_range, V):
     env, workers_num, beta, epsilon = data
     A = env.GetActionSpace()
     S = env.GetStateSpace()
-    V, _ = ray.get(VI_server.get_value_and_policy.remote())
     v_new = []
     p_new = []
     for update_state in update_range:
@@ -629,7 +630,7 @@ def VI_worker_v3(VI_server, data, update_range):
     #update_id = VI_server.update.remote(update_range, v_new, p_new, error)
     return (update_range, v_new, p_new, error)
 
-def sync_value_iteration_distributed_v3(env, beta = 0.999, epsilon = 0.01, workers_num = 4, stop_steps = 2000):
+def fast_value_iteration(env, beta = 0.999, epsilon = 0.01, workers_num = 4):
     S = env.GetStateSpace()
     VI_server = VI_server_v3.remote(S)
     data_id = ray.put((env, workers_num, beta, epsilon))
@@ -638,8 +639,9 @@ def sync_value_iteration_distributed_v3(env, beta = 0.999, epsilon = 0.01, worke
     error = float('inf')
     while error > epsilon:
         workers_list = []
+        V, _ = VI_server.get_value_and_policy.remote()
         for update_slice in (range(i, min(S-1, i+batch_size)) for i in range(0, S-1, batch_size)):
-            workers_list.append(VI_worker_v3.remote(VI_server, data_id, update_slice))
+            workers_list.append(VI_worker_v3.remote(VI_server, data_id, update_slice, V))
         #rests = ray.get(workers_list)
         a = ray.get([VI_server.update.remote(r, v, p, e) for r, v, p, e in workers_list])
         error = ray.get(VI_server.get_error_and_update.remote())
@@ -649,143 +651,4 @@ def sync_value_iteration_distributed_v3(env, beta = 0.999, epsilon = 0.01, worke
 
 
 
-@ray.remote
-class VI_client_v4(object):
-    def __init__(self,update_range):
-        self.range = update_range
 
-@ray.remote
-class VI_server_v4(object):
-    def __init__(self,size):
-        self.v_current = [0] * size
-        self.pi = [0] * size
-        self.v_new = [0] * size
-        self.errors = []
-
-    def get_value_and_policy(self):
-        return self.v_current, self.pi
-
-    def update(self, update_range, update_v, update_pi, update_error):
-        print('updating')
-        update_slice = slice(update_range.start, update_range.stop)
-        self.v_new[update_slice] = update_v
-        self.pi[update_slice] = update_pi
-        self.errors.append(update_error)
-
-    def get_error_and_update(self):
-        print(self.errors)
-        self.v_current = self.v_new
-        max_error = max(self.errors)
-        self.errors = []
-        return max_error
-
-@ray.remote
-def VI_worker_v4(VI_server, data, update_range):
-    env, workers_num, beta, epsilon = data
-    A = env.GetActionSpace()
-    S = env.GetStateSpace()
-    V, _ = ray.get(VI_server.get_value_and_policy.remote())
-    v_new = []
-    p_new = []
-    for update_state in update_range:
-        max_v, max_a = max(
-            [(env.GetReward(update_state, action) + \
-             beta * sum(
-                [p * V[s] for s, p in env.GetSuccessors(update_state,action)]), action) for action in range(A)],
-                key = lambda x: x[0])
-        v_new.append(max_v)
-        p_new.append(max_a)
-
-    error = max([abs(V[state] - v_new[i]) for i, state in enumerate(update_range)])
-    ray.get(VI_server.update.remote(update_range, v_new, p_new, error))
-    #return (update_range, v_new, p_new, error)
-
-@ray.remote
-def VI_loop(VI_server):
-        workers_list = []
-        for update_slice in (range(i, min(S-1, i+batch_size)) for i in range(0, S-1, batch_size)):
-            workers_list.append(VI_worker_v4.remote(VI_server, data_id, update_slice))
-        #rests = ray.get(workers_list)
-        a = ray.get([VI_server.update.remote(r, v, p, e) for r, v, p, e in workers_list])
-        error = ray.get(VI_server.get_error_and_update.remote())
-
-def sync_value_iteration_distributed_v4(env, beta = 0.999, epsilon = 0.01, workers_num = 4, stop_steps = 2000):
-    S = env.GetStateSpace()
-    VI_server = VI_server_v4.remote(S)
-    data_id = ray.put((env, workers_num, beta, epsilon))
-    batch_size = int((S - 1) / workers_num)
-
-    error = float('inf')
-    workers_list = []
-    for i in range(workers_num):
-        workers_list.append(VI_worker_v4.remote(VI_server, data_id, range(S-1)))
-        #VI_server.update.remote(*worker_list[-1])
-
-    while error > epsilon:
-        finished_worker_id = ray.wait(workers_list, num_returns = 1, timeout = None)[0][0]
-        ray.get(finished_worker_id)
-        workers_list.remove(finished_worker_id)
-
-        # start a new worker, and add it to the list
-        w_id = VI_worker_v4.remote(VI_server, data_id, range(S-1))
-        workers_list.append(w_id)
-        #for update_slice in (range(i, min(S-1, i+batch_size)) for i in range(0, S-1, batch_size)):
-        #workers_list.append(VI_worker_v4.remote(VI_server, data_id, range(S-1)))
-        #rests = ray.get(workers_list)
-        error = ray.get(VI_server.get_error_and_update.remote())
-
-    v, pi = ray.get(VI_server.get_value_and_policy.remote())
-    return v, pi
-
-
-def fast_value_iteration(env, beta = 0.999, epsilon = 0.01, workers_num = 4):
-    pass
-
-
-def run_test(func, **kwargs):
-    times = []
-    pis = []
-    for the_map in [map_8, map_16, map_32]:
-        MAP = the_map
-        map_size = MAP[1]
-        env = FrozenLakeEnv(desc = MAP[0], is_slippery = True)
-        start_time = time.time()
-        v, pi = func(env, **kwargs)
-        #v, pi = sync_value_iteration_v2(env, beta = beta)
-        end_time = time.time()
-        times.append(end_time - start_time)
-        v_np, pi_np  = np.array(v), np.array(pi)
-        pis.append(pi_np)
-        run_time['Sync distributed v2'] = end_time - start_time
-        print("time:", run_time['Sync distributed v2'])
-        print_results(v, pi, map_size, env, beta, 'dist_vi_v2')
-    return times, pis
-
-out = ""
-#sv1_time, sv1_policy = run_test(sync_value_iteration_v1, beta = beta)
-#print("Sync v1", sv1_time)
-#out += f'Sync v1 {sv1_time}\n'
-sv2_time, sv2_policy = run_test(sync_value_iteration_v2, beta = beta)
-print("Sync v2", sv2_time)
-out += f'Sync v2 {sv2_time}\n'
-for workers in [2, 4, 8]:
-    #dv1_time, policy = run_test(sync_value_iteration_distributed_v1, beta = beta, workers_num = workers)
-    #print("Dist-Sync v1:", workers, "workers", dv1_time)
-    #out += f'Dist-Sync v1: {workers} workers {dv1_time}\n'
-    #dv2_time, policy = run_test(sync_value_iteration_distributed_v2, beta = beta, workers_num = workers)
-    #print("Dist-Sync v2:", workers, "workers", dv2_time)
-    #out += f'Dist-Sync v2: {workers} workers {dv2_time}\n'
-    #if not np.prod(policy == sv2_policy):
-    #    print('POLICIES DO NOT MATCH!!')
-    #dv3_time, policy = run_test(sync_value_iteration_distributed_v3, beta = beta, workers_num = workers)
-    #print("Dist-Sync v3", workers, "workers", dv3_time)
-    #out += f'Dist-Sync v3: {workers} workers {dv3_time}\n'
-    #if not np.prod(policy == sv2_policy):
-    #    print('POLICIES DO NOT MATCH!!')
-    dv4_time, policy = run_test(sync_value_iteration_distributed_v4, beta = beta, workers_num = workers)
-    print("Dist-Sync v4", workers, "workers", dv4_time)
-    out += f'Dist-Sync v4: {workers} workers {dv4_time}\n'
-    if not np.prod(policy == sv2_policy):
-        print('POLICIES DO NOT MATCH!!')
-
-print(out)
