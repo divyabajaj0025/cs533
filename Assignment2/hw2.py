@@ -67,7 +67,7 @@ def generate_map(shape):
 
 
 MAPS = {
-    
+
     "4x4": [
         "SFFF",
         "FHFH",
@@ -102,7 +102,7 @@ MAPS = {
         "FFFFFFFFFFHFFFFF",
         "FFFHFFFFFFFFFFFG",
     ],
-    
+
     "32x32": [
         'SFFHFFFFFFFFFFFFFFFFFFFFFFHFFFFF',
         'FFHFHHFFHFFFFFFFFFFFFFFFFFHFFFFF',
@@ -226,14 +226,14 @@ class FrozenLakeEnv(discrete.DiscreteEnv):
         rew_hole = -1000
         rew_goal = 1000
         rew_step = -1
-        
+
         P = {s : {a : [] for a in range(nA)} for s in range(nS)}
         self.TransitProb = np.zeros((nA, nS + 1, nS + 1))
         self.TransitReward = np.zeros((nS + 1, nA))
-        
+
         def to_s(row, col):
             return row*ncol + col
-        
+
         def inc(row, col, a):
             if a == LEFT:
                 col = max(col-1,0)
@@ -304,21 +304,21 @@ class FrozenLakeEnv(discrete.DiscreteEnv):
         if mode != 'human':
             with closing(outfile):
                 return outfile.getvalue()
-    
+
     def GetSuccessors(self, s, a):
         next_states = np.nonzero(self.TransitProb[a, s, :])
         probs = self.TransitProb[a, s, next_states]
         return [(s,p) for s,p in zip(next_states[0], probs[0])]
-    
+
     def GetTransitionProb(self, s, a, ns):
         return self.TransitProb[a, s, ns]
-    
+
     def GetReward(self, s, a):
         return self.TransitReward[s, a]
-    
+
     def GetStateSpace(self):
         return self.TransitProb.shape[1]
-    
+
     def GetActionSpace(self):
         return self.TransitProb.shape[0]
 
@@ -364,16 +364,16 @@ def print_results(v, pi, map_size, env, beta, name):
     pickle.dump(pi, open(name + "_" + str(map_size) + "_pi.pkl", "wb"))
 
 def sync_value_iteration_v1(env, beta = 0.999, epsilon = 0.0001):
-    
+
     A = env.GetActionSpace()
     S = env.GetStateSpace()
-    
+
     pi = [0] * S
     v = [0] * S
-    
+
     pi_new = [0] * S
     v_new = [0] * S
-    
+
     bellman_error = float('inf')
     while(bellman_error > epsilon):
         bellman_error = 0
@@ -387,10 +387,10 @@ def sync_value_iteration_v1(env, beta = 0.999, epsilon = 0.0001):
                     [env.GetTransitionProb(state,action, s) * v[s] for s in range(S)]), action) for action in range(A)],
                     key = lambda x: x[0])
         bellman_error = max([abs(v[state] - v_new[state]) for state in range(S)])
-                
+
         v = list(v_new)
         pi = list(pi_new)
-        
+
     return v, pi
 
 def sync_value_iteration_v2(env, beta = 0.999, epsilon = 0.0001):
@@ -430,14 +430,14 @@ class VI_server_v1(object):
         self.v_current = [0] * size
         self.pi = [0] * size
         self.v_new = [0] * size
-        
+
     def get_value_and_policy(self):
         return self.v_current, self.pi
-    
+
     def update(self, update_index, update_v, update_pi):
         self.v_new[update_index] = update_v
         self.pi[update_index] = update_pi
-    
+
     def get_error_and_update(self):
         max_error = 0
         for i in range(len(self.v_current)):
@@ -445,38 +445,38 @@ class VI_server_v1(object):
             if error > max_error:
                 max_error = error
             self.v_current[i] = self.v_new[i]
-            
+
         return max_error
-    
+
 @ray.remote
 def VI_worker_v1(VI_server, data, worker_id, update_state):
         env, workers_num, beta, epsilon = data
         A = env.GetActionSpace()
         S = env.GetStateSpace()
-            
-        # get shared variable      
+
+        # get shared variable
         V, _ = ray.get(VI_server.get_value_and_policy.remote())
-        
+
         # bellman backup
-        
+
         max_v, max_a = max(
                 [(env.GetReward(update_state, action) + \
                  beta * sum(
                     [p * V[s] for s, p in env.GetSuccessors(update_state,action)]), action) for action in range(A)],
                     key = lambda x: x[0])
-        
+
         ray.get(VI_server.update.remote(update_state, max_v, max_a))
-        
+
         # return ith worker
         return worker_id
-                    
+
 def sync_value_iteration_distributed_v1(env, beta = 0.999, epsilon = 0.01, workers_num = 4, stop_steps = 2000):
     S = env.GetStateSpace()
     VI_server = VI_server_v1.remote(S)
     data_id = ray.put((env, workers_num, beta, epsilon))
-    
+
     # start the all worker, store their id in a list
-    
+
     error = float('inf')
     while error > epsilon:
         workers_list = []
